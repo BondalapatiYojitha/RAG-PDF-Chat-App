@@ -75,34 +75,36 @@ def upload_pdf_to_s3(file_path, file_name):
     except Exception as e:
         st.error(f"Failed to upload PDF to S3: {e}")
 
-def load_and_split_pdf(file_path):
-    loader = PyPDFLoader(file_path)
-    pages = loader.load_and_split()
-    return split_text(pages)
-
 def list_indexes():
     response = s3_client.list_objects_v2(Bucket=BUCKET_NAME, Prefix="faiss_files/")
     if "Contents" in response:
         return sorted(set(obj["Key"].split("/")[-1].split(".")[0] for obj in response["Contents"] if obj["Key"].endswith(".faiss")))
     return []
 
-def load_faiss_index(index_name):
-    faiss_file = os.path.join(folder_path, f"{index_name}.faiss")
-    pkl_file = os.path.join(folder_path, f"{index_name}.pkl")
+def delete_document(index_name):
+    """Delete related PDF, FAISS, and PKL files from S3."""
+    try:
+        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pdf")
+        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.faiss")
+        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pkl")
+        st.success(f"🗑️ Deleted document `{index_name}` and its index successfully!")
+    except Exception as e:
+        st.error(f"Failed to delete document: {e}")
 
-    if not os.path.exists(faiss_file) or not os.path.exists(pkl_file):
-        s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.faiss", faiss_file)
+def load_full_document_text(index_name):
+    local_pdf_path = os.path.join(folder_path, f"{index_name}.pdf")
+
+    if not os.path.exists(local_pdf_path):
         try:
-            s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.pkl", pkl_file)
-        except:
-            pass
+            s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.pdf", local_pdf_path)
+        except Exception as e:
+            st.error(f"❌ PDF file not found: {e}")
+            return ""
 
-    return FAISS.load_local(
-        index_name=index_name,
-        folder_path=folder_path,
-        embeddings=bedrock_embeddings,
-        allow_dangerous_deserialization=True
-    )
+    loader = PyPDFLoader(local_pdf_path)
+    pages = loader.load()
+    full_text = "\n".join(page.page_content for page in pages)
+    return full_text
 
 def get_llm():
     return Bedrock(
@@ -113,9 +115,7 @@ def get_llm():
 
 def build_qa_chain(vectorstore):
     prompt_template = """
-Human: Please provide a clear, concise **summary** of the given document chunks. 
-Focus on the main topics, conclusions, and important points.
-If you cannot find enough context, just say "I don't know."
+Human: Please provide a clear, concise summary of the document chunks.
 
 <context>
 {context}
@@ -133,26 +133,11 @@ Summary:
         chain_type_kwargs={"prompt": PROMPT}
     )
 
-def load_full_document_text(index_name):
-    local_pdf_path = os.path.join(folder_path, f"{index_name}.pdf")
-
-    if not os.path.exists(local_pdf_path):
-        try:
-            s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.pdf", local_pdf_path)
-        except Exception as e:
-            st.error(f"❌ PDF file not found: {e}")
-            return ""
-
-    loader = PyPDFLoader(local_pdf_path)
-    pages = loader.load()
-    full_text = "\n".join(page.page_content for page in pages)
-    return full_text
-
 def ask_deep_question(full_text, user_question):
     llm = get_llm()
 
     prompt = f"""
-Human: Using the following document, answer the question clearly and completely.
+Human: Using the following document, answer the question completely.
 
 <Document>
 {full_text}
@@ -183,7 +168,7 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    tab1, tab2 = st.tabs(["📂 Upload PDFs", "🔍 Ask Questions"])
+    tab1, tab2 = st.tabs(["📂 Upload / Manage PDFs", "🔍 Ask Questions"])
 
     with tab1:
         st.header("Upload PDFs to Create Searchable Index")
@@ -201,12 +186,21 @@ def main():
                     f.write(uploaded_file.getvalue())
 
                 try:
-                    documents = load_and_split_pdf(saved_file_path)
+                    documents = load_full_document_text(clean_name)
                     create_vector_store(clean_name, documents)
                     upload_pdf_to_s3(saved_file_path, clean_name)
                     st.success(f"✅ Uploaded PDF `{uploaded_file.name}` and created FAISS index!")
                 except Exception as e:
                     st.error(f"❌ Error processing {uploaded_file.name}: {e}")
+
+        st.header("Manage Uploaded Documents")
+        indexes = list_indexes()
+        if indexes:
+            selected_delete = st.selectbox("Select a document to delete", indexes)
+            if st.button("Delete Selected Document"):
+                delete_document(selected_delete)
+        else:
+            st.info("No documents found yet.")
 
     with tab2:
         col1, col2 = st.columns([3, 7])
@@ -221,7 +215,7 @@ def main():
 
             selected_index = st.selectbox("Select a document", indexes)
 
-            user_query = st.text_input("Ask a question (example: How does our system fail women?)")
+            user_query = st.text_input("Ask a question")
 
             if st.button("Ask (Quick Retrieval)"):
                 with st.spinner("Thinking..."):
