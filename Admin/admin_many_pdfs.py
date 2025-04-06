@@ -14,20 +14,13 @@ from langchain.chains import RetrievalQA
 s3_client = boto3.client("s3")
 BUCKET_NAME = "yojitha-chat-with-pdf"
 
-# Ensure AWS Region is Set
+# AWS Region
 os.environ["AWS_REGION"] = "us-east-1"
 os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
-# Initialize Bedrock Clients
-bedrock_client = boto3.client(
-    service_name="bedrock-runtime",
-    region_name="us-east-1"
-)
-
-bedrock_embeddings = BedrockEmbeddings(
-    model_id="amazon.titan-embed-text-v1",
-    client=bedrock_client
-)
+# Initialize Bedrock Client
+bedrock_client = boto3.client(service_name="bedrock-runtime", region_name="us-east-1")
+bedrock_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v1", client=bedrock_client)
 
 folder_path = "/tmp/"
 
@@ -37,10 +30,7 @@ def clean_file_name(file_name):
     return "".join(c if c.isalnum() or c in ('.', '_') else "_" for c in file_name)
 
 def split_text(pages, chunk_size=3000, chunk_overlap=200):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap
-    )
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     return text_splitter.split_documents(pages)
 
 def faiss_exists_in_s3(index_name):
@@ -53,7 +43,6 @@ def faiss_exists_in_s3(index_name):
 def create_vector_store(file_name, documents):
     local_folder = os.path.join(folder_path, file_name)
     os.makedirs(local_folder, exist_ok=True)
-
     faiss_index_path = os.path.join(local_folder, "index")
     pkl_path = os.path.join(local_folder, "index.pkl")
 
@@ -92,28 +81,20 @@ def load_faiss_index(index_name):
         except:
             pass
 
-    return FAISS.load_local(
-        index_name=index_name,
-        folder_path=folder_path,
-        embeddings=bedrock_embeddings,
-        allow_dangerous_deserialization=True
-    )
+    return FAISS.load_local(index_name=index_name, folder_path=folder_path, embeddings=bedrock_embeddings, allow_dangerous_deserialization=True)
 
 def load_all_vectorstores():
     indexes = list_indexes()
     all_vectorstores = []
-    
     for idx in indexes:
         vs = load_faiss_index(idx)
         all_vectorstores.append(vs)
-    
     if all_vectorstores:
-        merged_vectorstore = all_vectorstores[0]
-        for other_vs in all_vectorstores[1:]:
-            merged_vectorstore.merge_from(other_vs)
-        return merged_vectorstore
-    else:
-        return None
+        merged = all_vectorstores[0]
+        for other in all_vectorstores[1:]:
+            merged.merge_from(other)
+        return merged
+    return None
 
 def delete_document(index_name):
     try:
@@ -132,18 +113,12 @@ def load_full_document_text(index_name):
         except Exception as e:
             st.error(f"❌ PDF file not found: {e}")
             return ""
-
     loader = PyPDFLoader(local_pdf_path)
     pages = loader.load()
-    full_text = "\n".join(page.page_content for page in pages)
-    return full_text
+    return "\n".join(page.page_content for page in pages)
 
 def get_llm():
-    return Bedrock(
-        model_id="anthropic.claude-v2:1",
-        client=bedrock_client,
-        model_kwargs={'max_tokens_to_sample': 800}
-    )
+    return Bedrock(model_id="anthropic.claude-v2:1", client=bedrock_client, model_kwargs={'max_tokens_to_sample': 800})
 
 def build_qa_chain(vectorstore):
     prompt_template = """
@@ -156,20 +131,14 @@ Human: Please provide a clear, concise answer from the provided context.
 Answer:
 """
     PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-
-    return RetrievalQA.from_chain_type(
-        llm=get_llm(),
-        retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 15}),
-        return_source_documents=False,
-        chain_type="stuff",
-        chain_type_kwargs={"prompt": PROMPT}
-    )
+    return RetrievalQA.from_chain_type(llm=get_llm(), retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 15}), return_source_documents=False, chain_type="stuff", chain_type_kwargs={"prompt": PROMPT})
 
 def ask_deep_question(full_text, user_question):
     llm = get_llm()
-
     prompt = f"""
-Human: Using the following document, answer the question completely.
+Human: You are given a full document and a user question.
+
+Even if the document covers multiple topics or is broad, please do your best to summarize the main ideas, key points, and important insights clearly and concisely.
 
 <Document>
 {full_text}
@@ -183,6 +152,7 @@ Assistant:
     return response
 
 # --- Streamlit App ---
+
 def main():
     st.set_page_config(page_title="Chat with Your PDF", layout="wide")
 
@@ -192,9 +162,7 @@ def main():
                 padding-top: 1rem !important;
                 padding-bottom: 1rem !important;
             }
-            header {
-                visibility: hidden;
-            }
+            header {visibility: hidden;}
         </style>
     """, unsafe_allow_html=True)
 
@@ -206,11 +174,7 @@ def main():
 
         if uploaded_files:
             for uploaded_file in uploaded_files:
-                original_file_name = os.path.splitext(uploaded_file.name)[0]
-                clean_name = clean_file_name(original_file_name)
-
-                st.write(f"Processing PDF: {uploaded_file.name}")
-
+                clean_name = clean_file_name(os.path.splitext(uploaded_file.name)[0])
                 saved_file_path = os.path.join(folder_path, f"{clean_name}.pdf")
                 with open(saved_file_path, "wb") as f:
                     f.write(uploaded_file.getvalue())
@@ -221,7 +185,7 @@ def main():
                     documents = split_text(pages)
                     create_vector_store(clean_name, documents)
                     upload_pdf_to_s3(saved_file_path, clean_name)
-                    st.success(f"✅ Uploaded PDF `{uploaded_file.name}` and created FAISS index!")
+                    st.success(f"✅ Uploaded and indexed `{uploaded_file.name}`!")
                 except Exception as e:
                     st.error(f"❌ Error processing {uploaded_file.name}: {e}")
 
@@ -229,11 +193,9 @@ def main():
         indexes = list_indexes()
         if indexes:
             search_text = st.text_input("🔍 Search uploaded documents")
-            filtered_indexes = [i for i in indexes if search_text.lower() in i.lower()]
-            
-            selected_deletes = st.multiselect("Select documents to delete", filtered_indexes)
+            filtered = [i for i in indexes if search_text.lower() in i.lower()]
+            selected_deletes = st.multiselect("Select documents to delete", filtered)
             confirm_delete = st.checkbox("⚠️ Confirm delete")
-            
             if st.button("Delete Selected Documents"):
                 if confirm_delete and selected_deletes:
                     for doc in selected_deletes:
@@ -241,24 +203,22 @@ def main():
                 elif not selected_deletes:
                     st.warning("⚠️ Please select at least one document.")
                 else:
-                    st.warning("⚠️ Please check 'Confirm delete' before deleting.")
+                    st.warning("⚠️ Please confirm delete first.")
         else:
             st.info("No documents found yet.")
 
     with tab2:
-        col1, col2 = st.columns([3, 7])
+        col1, col2 = st.columns([3,7])
 
         with col1:
             st.header("Ask Questions from Uploaded Documents")
-
             indexes = list_indexes()
             if not indexes:
-                st.warning("No documents found. Please upload PDFs first.")
+                st.warning("No documents found.")
                 return
 
             selected_index = st.selectbox("Select a document", indexes)
-
-            user_query = st.text_input("Ask a question")
+            user_query = st.text_input("Ask your question")
 
             if st.button("Ask Question (Auto Mode)"):
                 with st.spinner("Thinking..."):
@@ -267,11 +227,9 @@ def main():
                     result = qa_chain.invoke({"query": user_query})
                     answer = result["result"]
 
-                    weak_phrases = ["i don't know", "not enough information", "insufficient context", "unable to answer", "cannot answer"]
-
-                    if any(phrase in answer.lower() for phrase in weak_phrases) or len(answer.strip().split()) < 20:
-                        st.warning("⚠️ Retrieved answer incomplete. Trying Deep Full Document mode...")
-
+                    weak_phrases = ["i don't know", "not enough information", "insufficient context", "unable to answer"]
+                    if any(w in answer.lower() for w in weak_phrases) or len(answer.strip().split()) < 20:
+                        st.warning("⚠️ Retrieved answer incomplete. Trying Deep Mode...")
                         full_text = load_full_document_text(selected_index)
                         if full_text:
                             deep_answer = ask_deep_question(full_text, user_query)
@@ -285,35 +243,23 @@ def main():
 
             if st.button("Search Across All Documents"):
                 with st.spinner("Searching all documents..."):
-                    all_vectorstore = load_all_vectorstores()
-                    if all_vectorstore:
-                        qa_chain = build_qa_chain(all_vectorstore)
+                    merged_store = load_all_vectorstores()
+                    if merged_store:
+                        qa_chain = build_qa_chain(merged_store)
                         result = qa_chain.invoke({"query": user_query})
                         st.success("✅ Answer across all documents:")
                         st.write(result["result"])
                     else:
-                        st.error("❌ No documents available for search.")
+                        st.error("❌ No documents available to search.")
 
         with col2:
             local_pdf_path = os.path.join(folder_path, f"{selected_index}.pdf")
-
-            if not os.path.exists(local_pdf_path):
-                try:
-                    s3_client.download_file(BUCKET_NAME, f"faiss_files/{selected_index}.pdf", local_pdf_path)
-                except Exception as e:
-                    st.error(f"❌ PDF file not found: {e}")
-
             if os.path.exists(local_pdf_path):
                 with open(local_pdf_path, "rb") as f:
-                    pdf_bytes = f.read()
-                    base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-
-                st.markdown(
-                    f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="900px" type="application/pdf"></iframe>',
-                    unsafe_allow_html=True,
-                )
+                    base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+                st.markdown(f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="900px"></iframe>', unsafe_allow_html=True)
             else:
-                st.warning("PDF preview not available.")
+                st.warning("PDF Preview not available.")
 
 if __name__ == "__main__":
     main()
