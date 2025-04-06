@@ -236,8 +236,6 @@ def main():
                         st.write(summary)
 
         with col2:
-            st.header("Document Preview")
-
             local_pdf_path = os.path.join(folder_path, f"{selected_index}.pdf")
 
             if not os.path.exists(local_pdf_path):
@@ -250,13 +248,6 @@ def main():
                 with open(local_pdf_path, "rb") as f:
                     pdf_bytes = f.read()
                     base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-
-                st.download_button(
-                    label="Download PDF",
-                    data=pdf_bytes,
-                    file_name=f"{selected_index}.pdf",
-                    mime='application/pdf'
-                )
 
                 st.markdown(
                     f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="900px" type="application/pdf"></iframe>',
