@@ -1,10 +1,11 @@
 import os
-import boto3
 import streamlit as st
-from langchain_community.embeddings import BedrockEmbeddings
+import boto3
 from langchain_community.vectorstores import FAISS
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.embeddings import BedrockEmbeddings
+from langchain.llms.bedrock import Bedrock
+from langchain.prompts import PromptTemplate
+from langchain.chains import RetrievalQA
 
 # AWS S3 Configuration
 s3_client = boto3.client("s3")
@@ -28,77 +29,82 @@ bedrock_embeddings = BedrockEmbeddings(
 
 folder_path = "/tmp/"
 
-# --- Utility Functions ---
+# Load FAISS index
+def load_faiss_index(index_name):
+    faiss_file = os.path.join(folder_path, f"{index_name}.faiss")
+    pkl_file = os.path.join(folder_path, f"{index_name}.pkl")
 
-def clean_file_name(file_name):
-    return "".join(c if c.isalnum() or c in ('.', '_') else "_" for c in file_name)
+    if not os.path.exists(faiss_file) or not os.path.exists(pkl_file):
+        s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.faiss", faiss_file)
+        try:
+            s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.pkl", pkl_file)
+        except:
+            pass
 
-def split_text(pages, chunk_size=1000, chunk_overlap=200):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap
+    return FAISS.load_local(
+        index_name=index_name,
+        folder_path=folder_path,
+        embeddings=bedrock_embeddings,
+        allow_dangerous_deserialization=True
     )
-    return text_splitter.split_documents(pages)
 
-def faiss_exists_in_s3(index_name):
-    try:
-        s3_client.head_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.faiss")
-        return True
-    except:
-        return False
+# Initialize LLM
+def get_llm():
+    return Bedrock(
+        model_id="anthropic.claude-v2:1",
+        client=bedrock_client,
+        model_kwargs={'max_tokens_to_sample': 800}
+    )
 
-def create_vector_store(file_name, documents):
-    local_folder = os.path.join(folder_path, file_name)
-    os.makedirs(local_folder, exist_ok=True)
+# Customized QA Chain (Summary Friendly Prompt)
+def build_qa_chain(vectorstore):
+    prompt_template = """
+Human: Please provide a clear, concise **summary** of the given document chunks. 
+Focus on the main topics, conclusions, and important points.
+If you cannot find enough context, just say "I don't know."
 
-    faiss_index_path = os.path.join(local_folder, "index")
-    pkl_path = os.path.join(local_folder, "index.pkl")
+<context>
+{context}
+</context>
 
-    if faiss_exists_in_s3(file_name):
-        st.success(f"✅ FAISS index for `{file_name}` already exists in S3. Skipping.")
-        return True
+Summary:
+"""
+    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
 
-    vectorstore_faiss = FAISS.from_documents(documents, bedrock_embeddings)
-    vectorstore_faiss.save_local(index_name="index", folder_path=local_folder)
+    return RetrievalQA.from_chain_type(
+        llm=get_llm(),
+        retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 15}),
+        return_source_documents=False,
+        chain_type="stuff",
+        chain_type_kwargs={"prompt": PROMPT}
+    )
 
-    s3_client.upload_file(faiss_index_path + ".faiss", BUCKET_NAME, f"faiss_files/{file_name}.faiss")
-    s3_client.upload_file(pkl_path, BUCKET_NAME, f"faiss_files/{file_name}.pkl")
-
-    st.success(f"✅ FAISS index for `{file_name}` created and uploaded to S3!")
-
-    return True
-
-def load_and_split_pdf(file_path):
-    loader = PyPDFLoader(file_path)
-    pages = loader.load_and_split()
-    return split_text(pages)
-
-# --- Streamlit App ---
-
+# Streamlit App
 def main():
-    st.title("Chat with Your PDF")
+    st.title("Ask Questions about Your Uploaded PDFs")
 
-    # Upload PDFs
-    st.subheader("Upload PDFs to Create Searchable Index")
-    uploaded_files = st.file_uploader("Choose PDFs", type="pdf", accept_multiple_files=True)
+    # List all indexes
+    response = s3_client.list_objects_v2(Bucket=BUCKET_NAME, Prefix="faiss_files/")
+    if "Contents" in response:
+        indexes = sorted(set(obj["Key"].split("/")[-1].split(".")[0] for obj in response["Contents"] if obj["Key"].endswith(".faiss")))
+    else:
+        indexes = []
 
-    if uploaded_files:
-        for uploaded_file in uploaded_files:
-            original_file_name = os.path.splitext(uploaded_file.name)[0]
-            clean_name = clean_file_name(original_file_name)
+    if not indexes:
+        st.error("No FAISS indexes found in the S3 bucket. Please upload PDFs first.")
+        return
 
-            st.write(f"Processing PDF: {uploaded_file.name}")
+    selected_index = st.selectbox("Select a document to query:", indexes)
 
-            # Save uploaded PDF to /tmp
-            saved_file_path = os.path.join("/tmp", f"{clean_name}.pdf")
-            with open(saved_file_path, "wb") as f:
-                f.write(uploaded_file.getvalue())
+    user_query = st.text_input("Ask a question (example: What is this document all about?)")
 
-            try:
-                documents = load_and_split_pdf(saved_file_path)
-                create_vector_store(clean_name, documents)
-            except Exception as e:
-                st.error(f"❌ Error processing {uploaded_file.name}: {e}")
+    if st.button("Ask"):
+        with st.spinner("Thinking..."):
+            vectorstore = load_faiss_index(selected_index)
+            qa_chain = build_qa_chain(vectorstore)
+            result = qa_chain.invoke({"query": user_query})
+            st.success("Answer:")
+            st.write(result["result"])
 
 if __name__ == "__main__":
     main()
