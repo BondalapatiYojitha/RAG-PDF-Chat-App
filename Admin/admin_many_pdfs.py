@@ -148,16 +148,20 @@ def load_full_document_text(index_name):
     full_text = "\n".join(page.page_content for page in pages)
     return full_text
 
-def summarize_full_document(text):
+def ask_deep_question(full_text, user_question):
     llm = get_llm()
 
     prompt = f"""
-Human: Summarize the following document into its main topics, conclusions, and important points:
+Human: Using the following document, answer the question clearly and completely.
 
-{text}
+<Document>
+{full_text}
+</Document>
 
-Assistant:"""
+Question: {user_question}
 
+Assistant:
+"""
     response = llm.invoke(prompt)
     return response
 
@@ -217,9 +221,9 @@ def main():
 
             selected_index = st.selectbox("Select a document", indexes)
 
-            user_query = st.text_input("Ask a question (example: What is this document all about?)")
+            user_query = st.text_input("Ask a question (example: How does our system fail women?)")
 
-            if st.button("Ask"):
+            if st.button("Ask (Quick Retrieval)"):
                 with st.spinner("Thinking..."):
                     vectorstore = load_faiss_index(selected_index)
                     qa_chain = build_qa_chain(vectorstore)
@@ -227,13 +231,13 @@ def main():
                     st.success("Answer:")
                     st.write(result["result"])
 
-            if st.button("Summarize Full Document"):
-                with st.spinner("Summarizing the entire document..."):
+            if st.button("Ask Deep Question (Full Document)"):
+                with st.spinner("Loading full document and answering..."):
                     full_text = load_full_document_text(selected_index)
                     if full_text:
-                        summary = summarize_full_document(full_text)
-                        st.success("Document Summary:")
-                        st.write(summary)
+                        deep_answer = ask_deep_question(full_text, user_query)
+                        st.success("Deep Answer:")
+                        st.write(deep_answer)
 
         with col2:
             local_pdf_path = os.path.join(folder_path, f"{selected_index}.pdf")
