@@ -119,9 +119,9 @@ def load_all_vectorstores():
 
 def delete_document(index_name):
     try:
-        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pdf")
-        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.faiss")
-        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pkl")
+        s3_client.delete_object(BUCKET_NAME, f"faiss_files/{index_name}.pdf")
+        s3_client.delete_object(BUCKET_NAME, f"faiss_files/{index_name}.faiss")
+        s3_client.delete_object(BUCKET_NAME, f"faiss_files/{index_name}.pkl")
         st.success(f"🗑️ Deleted document `{index_name}` and its index successfully!")
     except Exception as e:
         st.error(f"Failed to delete document: {e}")
@@ -130,7 +130,7 @@ def load_full_document_text(index_name):
     local_pdf_path = os.path.join(folder_path, f"{index_name}.pdf")
     if not os.path.exists(local_pdf_path):
         try:
-            s3_client.download_file(Bucket=BUCKET_NAME, f"faiss_files/{index_name}.pdf", local_pdf_path)
+            s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.pdf", local_pdf_path)
         except Exception as e:
             st.error(f"❌ PDF file not found: {e}")
             return ""
@@ -185,7 +185,6 @@ Assistant:
     return response
 
 # --- Streamlit App ---
-
 def main():
     st.set_page_config(page_title="Chat with Your PDF", layout="wide")
 
