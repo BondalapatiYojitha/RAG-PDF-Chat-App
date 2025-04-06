@@ -81,6 +81,25 @@ def list_indexes():
         return sorted(set(obj["Key"].split("/")[-1].split(".")[0] for obj in response["Contents"] if obj["Key"].endswith(".faiss")))
     return []
 
+def load_faiss_index(index_name):
+    """Load FAISS index from S3/local."""
+    faiss_file = os.path.join(folder_path, f"{index_name}.faiss")
+    pkl_file = os.path.join(folder_path, f"{index_name}.pkl")
+
+    if not os.path.exists(faiss_file) or not os.path.exists(pkl_file):
+        s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.faiss", faiss_file)
+        try:
+            s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.pkl", pkl_file)
+        except:
+            pass
+
+    return FAISS.load_local(
+        index_name=index_name,
+        folder_path=folder_path,
+        embeddings=bedrock_embeddings,
+        allow_dangerous_deserialization=True
+    )
+
 def delete_document(index_name):
     try:
         s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pdf")
