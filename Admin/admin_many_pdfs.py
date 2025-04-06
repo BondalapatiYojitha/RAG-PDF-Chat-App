@@ -90,11 +90,6 @@ def delete_document(index_name):
     except Exception as e:
         st.error(f"Failed to delete document: {e}")
 
-def load_and_split_pdf(file_path):
-    loader = PyPDFLoader(file_path)
-    pages = loader.load_and_split()
-    return split_text(pages)
-
 def load_full_document_text(index_name):
     local_pdf_path = os.path.join(folder_path, f"{index_name}.pdf")
     if not os.path.exists(local_pdf_path):
@@ -188,7 +183,9 @@ def main():
                     f.write(uploaded_file.getvalue())
 
                 try:
-                    documents = load_and_split_pdf(saved_file_path)   # <-- Corrected here
+                    loader = PyPDFLoader(saved_file_path)
+                    pages = loader.load_and_split()
+                    documents = split_text(pages)
                     create_vector_store(clean_name, documents)
                     upload_pdf_to_s3(saved_file_path, clean_name)
                     st.success(f"✅ Uploaded PDF `{uploaded_file.name}` and created FAISS index!")
