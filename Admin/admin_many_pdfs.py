@@ -82,7 +82,6 @@ def list_indexes():
     return []
 
 def load_faiss_index(index_name):
-    """Load FAISS index from S3/local."""
     faiss_file = os.path.join(folder_path, f"{index_name}.faiss")
     pkl_file = os.path.join(folder_path, f"{index_name}.pkl")
 
@@ -101,7 +100,6 @@ def load_faiss_index(index_name):
     )
 
 def load_all_vectorstores():
-    """Load and merge all FAISS indexes into one big vectorstore."""
     indexes = list_indexes()
     all_vectorstores = []
     
@@ -185,6 +183,7 @@ Assistant:
     return response
 
 # --- Streamlit App ---
+
 def main():
     st.set_page_config(page_title="Chat with Your PDF", layout="wide")
 
@@ -269,16 +268,18 @@ def main():
                     result = qa_chain.invoke({"query": user_query})
                     answer = result["result"]
 
-                    weak_answers = ["i don't know", "not enough information", "don't have access", "cannot answer"]
-                    if any(weak_phrase in answer.lower() for weak_phrase in weak_answers) or len(answer.strip()) < 20:
-                        st.warning("⚠️ Retrieved answer incomplete. Trying Deep Document Mode automatically...")
+                    weak_phrases = ["i don't know", "not enough information", "insufficient context", "unable to answer", "cannot answer"]
+
+                    if any(phrase in answer.lower() for phrase in weak_phrases) or len(answer.strip().split()) < 20:
+                        st.warning("⚠️ Retrieved answer incomplete. Trying Deep Full Document mode...")
+
                         full_text = load_full_document_text(selected_index)
                         if full_text:
                             deep_answer = ask_deep_question(full_text, user_query)
-                            st.success("✅ Deep Answer (Full Document):")
+                            st.success("✅ Deep Full Document Answer:")
                             st.write(deep_answer)
                         else:
-                            st.error("❌ Failed to load full document for deep answer.")
+                            st.error("❌ Could not load full document for deep answering.")
                     else:
                         st.success("✅ Answer (Quick Retrieval):")
                         st.write(answer)
