@@ -14,11 +14,11 @@ from langchain.chains import RetrievalQA
 s3_client = boto3.client("s3")
 BUCKET_NAME = "yojitha-chat-with-pdf"
 
-# AWS Region
+# Set AWS Region
 os.environ["AWS_REGION"] = "us-east-1"
 os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
-# Initialize Bedrock Client
+# Initialize Bedrock Clients
 bedrock_client = boto3.client(service_name="bedrock-runtime", region_name="us-east-1")
 bedrock_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v1", client=bedrock_client)
 
@@ -47,7 +47,7 @@ def create_vector_store(file_name, documents):
     pkl_path = os.path.join(local_folder, "index.pkl")
 
     if faiss_exists_in_s3(file_name):
-        st.success(f"✅ FAISS index for `{file_name}` already exists in S3. Skipping.")
+        st.success(f"✅ FAISS index for `{file_name}` already exists. Skipping.")
         return True
 
     vectorstore_faiss = FAISS.from_documents(documents, bedrock_embeddings)
@@ -97,13 +97,17 @@ def load_all_vectorstores():
     return None
 
 def delete_document(index_name):
-    try:
-        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pdf")
-        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.faiss")
-        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pkl")
-        st.success(f"🗑️ Deleted document `{index_name}` and its index successfully!")
-    except Exception as e:
-        st.error(f"Failed to delete document: {e}")
+    errors = []
+    for ext in [".pdf", ".faiss", ".pkl"]:
+        try:
+            s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}{ext}")
+        except Exception as e:
+            errors.append(str(e))
+
+    if errors:
+        st.warning(f"⚠️ Some files may not have been deleted: {errors}")
+    else:
+        st.success(f"🗑️ Deleted all related files for `{index_name}` successfully!")
 
 def load_full_document_text(index_name):
     local_pdf_path = os.path.join(folder_path, f"{index_name}.pdf")
@@ -158,10 +162,7 @@ def main():
 
     st.markdown("""
         <style>
-            .block-container {
-                padding-top: 1rem !important;
-                padding-bottom: 1rem !important;
-            }
+            .block-container {padding-top: 1rem !important;}
             header {visibility: hidden;}
         </style>
     """, unsafe_allow_html=True)
