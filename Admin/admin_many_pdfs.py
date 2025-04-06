@@ -100,6 +100,23 @@ def load_faiss_index(index_name):
         allow_dangerous_deserialization=True
     )
 
+def load_all_vectorstores():
+    """Load and merge all FAISS indexes into one big vectorstore."""
+    indexes = list_indexes()
+    all_vectorstores = []
+    
+    for idx in indexes:
+        vs = load_faiss_index(idx)
+        all_vectorstores.append(vs)
+    
+    if all_vectorstores:
+        merged_vectorstore = all_vectorstores[0]
+        for other_vs in all_vectorstores[1:]:
+            merged_vectorstore.merge_from(other_vs)
+        return merged_vectorstore
+    else:
+        return None
+
 def delete_document(index_name):
     try:
         s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pdf")
@@ -113,7 +130,7 @@ def load_full_document_text(index_name):
     local_pdf_path = os.path.join(folder_path, f"{index_name}.pdf")
     if not os.path.exists(local_pdf_path):
         try:
-            s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.pdf", local_pdf_path)
+            s3_client.download_file(Bucket=BUCKET_NAME, f"faiss_files/{index_name}.pdf", local_pdf_path)
         except Exception as e:
             st.error(f"❌ PDF file not found: {e}")
             return ""
@@ -132,13 +149,13 @@ def get_llm():
 
 def build_qa_chain(vectorstore):
     prompt_template = """
-Human: Please provide a clear, concise summary of the document chunks.
+Human: Please provide a clear, concise answer from the provided context.
 
 <context>
 {context}
 </context>
 
-Summary:
+Answer:
 """
     PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
 
@@ -253,7 +270,6 @@ def main():
                     result = qa_chain.invoke({"query": user_query})
                     answer = result["result"]
 
-                    # Check if answer is weak
                     weak_answers = ["i don't know", "not enough information", "don't have access", "cannot answer"]
                     if any(weak_phrase in answer.lower() for weak_phrase in weak_answers) or len(answer.strip()) < 20:
                         st.warning("⚠️ Retrieved answer incomplete. Trying Deep Document Mode automatically...")
@@ -267,6 +283,17 @@ def main():
                     else:
                         st.success("✅ Answer (Quick Retrieval):")
                         st.write(answer)
+
+            if st.button("Search Across All Documents"):
+                with st.spinner("Searching all documents..."):
+                    all_vectorstore = load_all_vectorstores()
+                    if all_vectorstore:
+                        qa_chain = build_qa_chain(all_vectorstore)
+                        result = qa_chain.invoke({"query": user_query})
+                        st.success("✅ Answer across all documents:")
+                        st.write(result["result"])
+                    else:
+                        st.error("❌ No documents available for search.")
 
         with col2:
             local_pdf_path = os.path.join(folder_path, f"{selected_index}.pdf")
