@@ -246,21 +246,27 @@ def main():
 
             user_query = st.text_input("Ask a question")
 
-            if st.button("Ask (Quick Retrieval)"):
+            if st.button("Ask Question (Auto Mode)"):
                 with st.spinner("Thinking..."):
                     vectorstore = load_faiss_index(selected_index)
                     qa_chain = build_qa_chain(vectorstore)
                     result = qa_chain.invoke({"query": user_query})
-                    st.success("Answer:")
-                    st.write(result["result"])
+                    answer = result["result"]
 
-            if st.button("Ask Deep Question (Full Document)"):
-                with st.spinner("Loading full document and answering..."):
-                    full_text = load_full_document_text(selected_index)
-                    if full_text:
-                        deep_answer = ask_deep_question(full_text, user_query)
-                        st.success("Deep Answer:")
-                        st.write(deep_answer)
+                    # Check if answer is weak
+                    weak_answers = ["i don't know", "not enough information", "don't have access", "cannot answer"]
+                    if any(weak_phrase in answer.lower() for weak_phrase in weak_answers) or len(answer.strip()) < 20:
+                        st.warning("⚠️ Retrieved answer incomplete. Trying Deep Document Mode automatically...")
+                        full_text = load_full_document_text(selected_index)
+                        if full_text:
+                            deep_answer = ask_deep_question(full_text, user_query)
+                            st.success("✅ Deep Answer (Full Document):")
+                            st.write(deep_answer)
+                        else:
+                            st.error("❌ Failed to load full document for deep answer.")
+                    else:
+                        st.success("✅ Answer (Quick Retrieval):")
+                        st.write(answer)
 
         with col2:
             local_pdf_path = os.path.join(folder_path, f"{selected_index}.pdf")
