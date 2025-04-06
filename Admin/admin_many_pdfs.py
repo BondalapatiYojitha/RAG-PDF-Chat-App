@@ -117,9 +117,9 @@ def load_all_vectorstores():
 
 def delete_document(index_name):
     try:
-        s3_client.delete_object(BUCKET_NAME, f"faiss_files/{index_name}.pdf")
-        s3_client.delete_object(BUCKET_NAME, f"faiss_files/{index_name}.faiss")
-        s3_client.delete_object(BUCKET_NAME, f"faiss_files/{index_name}.pkl")
+        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pdf")
+        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.faiss")
+        s3_client.delete_object(Bucket=BUCKET_NAME, Key=f"faiss_files/{index_name}.pkl")
         st.success(f"🗑️ Deleted document `{index_name}` and its index successfully!")
     except Exception as e:
         st.error(f"Failed to delete document: {e}")
@@ -183,7 +183,6 @@ Assistant:
     return response
 
 # --- Streamlit App ---
-
 def main():
     st.set_page_config(page_title="Chat with Your PDF", layout="wide")
 
