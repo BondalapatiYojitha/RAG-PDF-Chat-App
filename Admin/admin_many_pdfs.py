@@ -172,11 +172,12 @@ def main():
             st.warning("No documents found. Please upload PDFs first.")
             return
 
-        selected_index = st.selectbox("Select a document", indexes)
-
-        col1, col2 = st.columns([2, 3])
+        # Create two columns: 30% left, 70% right
+        col1, col2 = st.columns([3, 7])
 
         with col1:
+            selected_index = st.selectbox("Select a document", indexes)
+
             user_query = st.text_input("Ask a question (example: What is this document all about?)")
 
             if st.button("Ask"):
@@ -212,7 +213,7 @@ def main():
                 )
 
                 st.markdown(
-                    f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>',
+                    f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>',
                     unsafe_allow_html=True,
                 )
             else:
