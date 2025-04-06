@@ -133,6 +133,34 @@ Summary:
         chain_type_kwargs={"prompt": PROMPT}
     )
 
+def load_full_document_text(index_name):
+    local_pdf_path = os.path.join(folder_path, f"{index_name}.pdf")
+
+    if not os.path.exists(local_pdf_path):
+        try:
+            s3_client.download_file(BUCKET_NAME, f"faiss_files/{index_name}.pdf", local_pdf_path)
+        except Exception as e:
+            st.error(f"❌ PDF file not found: {e}")
+            return ""
+
+    loader = PyPDFLoader(local_pdf_path)
+    pages = loader.load()
+    full_text = "\n".join(page.page_content for page in pages)
+    return full_text
+
+def summarize_full_document(text):
+    llm = get_llm()
+
+    prompt = f"""
+Human: Summarize the following document into its main topics, conclusions, and important points:
+
+{text}
+
+Assistant:"""
+
+    response = llm.invoke(prompt)
+    return response
+
 # --- Streamlit App ---
 
 def main():
@@ -151,7 +179,6 @@ def main():
 
                 st.write(f"Processing PDF: {uploaded_file.name}")
 
-                # Save to /tmp
                 saved_file_path = os.path.join(folder_path, f"{clean_name}.pdf")
                 with open(saved_file_path, "wb") as f:
                     f.write(uploaded_file.getvalue())
@@ -172,7 +199,6 @@ def main():
             st.warning("No documents found. Please upload PDFs first.")
             return
 
-        # Create two columns: 30% left, 70% right
         col1, col2 = st.columns([3, 7])
 
         with col1:
@@ -188,12 +214,19 @@ def main():
                     st.success("Answer:")
                     st.write(result["result"])
 
+            if st.button("Summarize Full Document"):
+                with st.spinner("Summarizing the entire document..."):
+                    full_text = load_full_document_text(selected_index)
+                    if full_text:
+                        summary = summarize_full_document(full_text)
+                        st.success("Document Summary:")
+                        st.write(summary)
+
         with col2:
             st.subheader("Document Preview")
 
             local_pdf_path = os.path.join(folder_path, f"{selected_index}.pdf")
 
-            # Download PDF if not found locally
             if not os.path.exists(local_pdf_path):
                 try:
                     s3_client.download_file(BUCKET_NAME, f"faiss_files/{selected_index}.pdf", local_pdf_path)
