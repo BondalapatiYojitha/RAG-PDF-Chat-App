@@ -66,9 +66,13 @@ def create_vector_store(file_name, documents):
     s3_client.upload_file(faiss_index_path + ".faiss", BUCKET_NAME, f"faiss_files/{file_name}.faiss")
     s3_client.upload_file(pkl_path, BUCKET_NAME, f"faiss_files/{file_name}.pkl")
 
-    st.success(f"✅ FAISS index for `{file_name}` created and uploaded to S3!")
-
     return True
+
+def upload_pdf_to_s3(file_path, file_name):
+    try:
+        s3_client.upload_file(file_path, BUCKET_NAME, f"faiss_files/{file_name}.pdf")
+    except Exception as e:
+        st.error(f"Failed to upload PDF to S3: {e}")
 
 def load_and_split_pdf(file_path):
     loader = PyPDFLoader(file_path)
@@ -154,6 +158,8 @@ def main():
                 try:
                     documents = load_and_split_pdf(saved_file_path)
                     create_vector_store(clean_name, documents)
+                    upload_pdf_to_s3(saved_file_path, clean_name)
+                    st.success(f"✅ Uploaded PDF `{uploaded_file.name}` and created FAISS index!")
                 except Exception as e:
                     st.error(f"❌ Error processing {uploaded_file.name}: {e}")
 
@@ -167,15 +173,48 @@ def main():
 
         selected_index = st.selectbox("Select a document", indexes)
 
-        user_query = st.text_input("Ask a question (example: What is this document all about?)")
+        col1, col2 = st.columns([2, 3])
 
-        if st.button("Ask"):
-            with st.spinner("Thinking..."):
-                vectorstore = load_faiss_index(selected_index)
-                qa_chain = build_qa_chain(vectorstore)
-                result = qa_chain.invoke({"query": user_query})
-                st.success("Answer:")
-                st.write(result["result"])
+        with col1:
+            user_query = st.text_input("Ask a question (example: What is this document all about?)")
+
+            if st.button("Ask"):
+                with st.spinner("Thinking..."):
+                    vectorstore = load_faiss_index(selected_index)
+                    qa_chain = build_qa_chain(vectorstore)
+                    result = qa_chain.invoke({"query": user_query})
+                    st.success("Answer:")
+                    st.write(result["result"])
+
+        with col2:
+            st.subheader("Document Preview")
+
+            local_pdf_path = os.path.join(folder_path, f"{selected_index}.pdf")
+
+            # Download PDF if not found locally
+            if not os.path.exists(local_pdf_path):
+                try:
+                    s3_client.download_file(BUCKET_NAME, f"faiss_files/{selected_index}.pdf", local_pdf_path)
+                except Exception as e:
+                    st.error(f"❌ PDF file not found: {e}")
+
+            if os.path.exists(local_pdf_path):
+                with open(local_pdf_path, "rb") as f:
+                    base64_pdf = f.read()
+
+                st.download_button(
+                    label="Download PDF",
+                    data=base64_pdf,
+                    file_name=f"{selected_index}.pdf",
+                    mime='application/pdf'
+                )
+
+                st.markdown(
+                    f'<iframe src="data:application/pdf;base64,{base64_pdf.decode("latin1")}" width="100%" height="600px" type="application/pdf"></iframe>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.warning("PDF preview not available.")
 
 if __name__ == "__main__":
     main()
