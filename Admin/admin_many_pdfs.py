@@ -1,5 +1,6 @@
 import os
 import boto3
+import base64
 import streamlit as st
 from langchain_community.embeddings import BedrockEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -200,17 +201,18 @@ def main():
 
             if os.path.exists(local_pdf_path):
                 with open(local_pdf_path, "rb") as f:
-                    base64_pdf = f.read()
+                    pdf_bytes = f.read()
+                    base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
 
                 st.download_button(
                     label="Download PDF",
-                    data=base64_pdf,
+                    data=pdf_bytes,
                     file_name=f"{selected_index}.pdf",
                     mime='application/pdf'
                 )
 
                 st.markdown(
-                    f'<iframe src="data:application/pdf;base64,{base64_pdf.decode("latin1")}" width="100%" height="600px" type="application/pdf"></iframe>',
+                    f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>',
                     unsafe_allow_html=True,
                 )
             else:
