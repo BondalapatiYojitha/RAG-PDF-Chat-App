@@ -166,15 +166,15 @@ Assistant:"""
 def main():
     st.set_page_config(page_title="Chat with Your PDF", layout="wide")
 
-    # Remove extra top margin
+    # Fix top padding and keep tabs visible
     st.markdown("""
         <style>
             .block-container {
-                padding-top: 1rem;
-                padding-bottom: 1rem;
+                padding-top: 1rem !important;
+                padding-bottom: 1rem !important;
             }
-            .main {
-                padding-top: 0rem;
+            header {
+                visibility: hidden;
             }
         </style>
     """, unsafe_allow_html=True)
@@ -205,7 +205,6 @@ def main():
                     st.error(f"❌ Error processing {uploaded_file.name}: {e}")
 
     with tab2:
-        # Create two columns immediately
         col1, col2 = st.columns([3, 7])
 
         with col1:
