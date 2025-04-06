@@ -166,6 +166,19 @@ Assistant:"""
 def main():
     st.set_page_config(page_title="Chat with Your PDF", layout="wide")
 
+    # Remove extra top margin
+    st.markdown("""
+        <style>
+            .block-container {
+                padding-top: 1rem;
+                padding-bottom: 1rem;
+            }
+            .main {
+                padding-top: 0rem;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
     tab1, tab2 = st.tabs(["📂 Upload PDFs", "🔍 Ask Questions"])
 
     with tab1:
@@ -192,7 +205,7 @@ def main():
                     st.error(f"❌ Error processing {uploaded_file.name}: {e}")
 
     with tab2:
-        # Immediately create two columns: 30% left, 70% right
+        # Create two columns immediately
         col1, col2 = st.columns([3, 7])
 
         with col1:
