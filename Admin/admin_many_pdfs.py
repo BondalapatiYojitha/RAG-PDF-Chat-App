@@ -214,9 +214,20 @@ def main():
         st.header("Manage Uploaded Documents")
         indexes = list_indexes()
         if indexes:
-            selected_delete = st.selectbox("Select a document to delete", indexes)
-            if st.button("Delete Selected Document"):
-                delete_document(selected_delete)
+            search_text = st.text_input("🔍 Search uploaded documents")
+            filtered_indexes = [i for i in indexes if search_text.lower() in i.lower()]
+            
+            selected_deletes = st.multiselect("Select documents to delete", filtered_indexes)
+            confirm_delete = st.checkbox("⚠️ Confirm delete")
+            
+            if st.button("Delete Selected Documents"):
+                if confirm_delete and selected_deletes:
+                    for doc in selected_deletes:
+                        delete_document(doc)
+                elif not selected_deletes:
+                    st.warning("⚠️ Please select at least one document.")
+                else:
+                    st.warning("⚠️ Please check 'Confirm delete' before deleting.")
         else:
             st.info("No documents found yet.")
 
