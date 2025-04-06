@@ -192,16 +192,17 @@ def main():
                     st.error(f"❌ Error processing {uploaded_file.name}: {e}")
 
     with tab2:
-        st.header("Ask Questions from Uploaded Documents")
-
-        indexes = list_indexes()
-        if not indexes:
-            st.warning("No documents found. Please upload PDFs first.")
-            return
-
+        # Immediately create two columns: 30% left, 70% right
         col1, col2 = st.columns([3, 7])
 
         with col1:
+            st.header("Ask Questions from Uploaded Documents")
+
+            indexes = list_indexes()
+            if not indexes:
+                st.warning("No documents found. Please upload PDFs first.")
+                return
+
             selected_index = st.selectbox("Select a document", indexes)
 
             user_query = st.text_input("Ask a question (example: What is this document all about?)")
@@ -223,7 +224,7 @@ def main():
                         st.write(summary)
 
         with col2:
-            st.subheader("Document Preview")
+            st.header("Document Preview")
 
             local_pdf_path = os.path.join(folder_path, f"{selected_index}.pdf")
 
@@ -246,7 +247,7 @@ def main():
                 )
 
                 st.markdown(
-                    f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>',
+                    f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="900px" type="application/pdf"></iframe>',
                     unsafe_allow_html=True,
                 )
             else:
