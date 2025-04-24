@@ -24,7 +24,7 @@ bedrock_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v1", cl
 
 folder_path = "/tmp/"
 
-# --- Utility Functions ---
+# ---- Utility Functions ----
 
 def clean_file_name(file_name):
     return "".join(c if c.isalnum() or c in ('.', '_') else "_" for c in file_name)
