@@ -131,7 +131,7 @@ def get_llm():
     return ChatBedrock(
         model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",
         client=bedrock_client,
-        model_kwargs={'max_tokens': 800}
+        max_tokens: 800}
     )
 
 def build_qa_chain(vectorstore):
@@ -274,4 +274,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
