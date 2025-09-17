@@ -2,11 +2,12 @@ import os
 import boto3
 import base64
 import streamlit as st
-from langchain_community.embeddings import BedrockEmbeddings
+# from langchain_community.embeddings import BedrockEmbeddings
+from langchain_aws import BedrockEmbeddings, ChatBedrock
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
-from langchain.llms.bedrock import Bedrock
+# from langchain.llms.bedrock import Bedrock
 from langchain.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
 
@@ -20,7 +21,11 @@ os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
 # Initialize Bedrock Clients
 bedrock_client = boto3.client(service_name="bedrock-runtime", region_name="us-east-1")
-bedrock_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v1", client=bedrock_client)
+# bedrock_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v1", client=bedrock_client)
+bedrock_embeddings = BedrockEmbeddings(
+    model_id="amazon.titan-embed-text-v2:0",
+    client=bedrock_client
+)
 
 folder_path = "/tmp/"
 
@@ -122,7 +127,12 @@ def load_full_document_text(index_name):
     return "\n".join(page.page_content for page in pages)
 
 def get_llm():
-    return Bedrock(model_id="anthropic.claude-v2:1", client=bedrock_client, model_kwargs={'max_tokens_to_sample': 800})
+    # return Bedrock(model_id="anthropic.claude-v2:1", client=bedrock_client, model_kwargs={'max_tokens_to_sample': 800})
+    return ChatBedrock(
+        model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",
+        client=bedrock_client,
+        model_kwargs={'max_tokens': 800}
+    )
 
 def build_qa_chain(vectorstore):
     prompt_template = """
@@ -264,3 +274,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
